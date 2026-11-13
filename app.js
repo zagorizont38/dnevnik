@@ -23,6 +23,14 @@
     { id: 'black', name: 'чёрный', color: '#111111' }
   ];
 
+  // Калькулятор баллов: оценки за приёмы
+  const TECHS = [
+    { id: 'ipponLeg', name: 'Иппон (нога)', pts: 3 },
+    { id: 'ipponDown', name: 'Иппон (добивание)', pts: 3 },
+    { id: 'wazaari', name: 'Ваза-ари', pts: 2 },
+    { id: 'yuko', name: 'Юко', pts: 1 }
+  ];
+
   // Спортивный год: сентябрь — июнь. Июль и август относим к новому сезону.
   const SEASON_FIRST_MONTH = 7;
 
@@ -94,6 +102,39 @@
     return { version: 1, onboarded: false, profile: { name: '', belt: 'white' }, comps: [] };
   }
 
+  // Приёмы: сколько раз каждый оценён и сколько это баллов
+  const num99 = (v) => Math.max(0, Math.min(99, parseInt(v, 10) || 0));
+  function techCounts(src) {
+    const out = {};
+    TECHS.forEach((t) => { out[t.id] = num99(src && src[t.id]); });
+    return out;
+  }
+  const techPoints = (counts) => TECHS.reduce((sum, t) => sum + counts[t.id] * t.pts, 0);
+  const techById = (id) => TECHS.find((t) => t.id === id);
+  const ptsWord = (n) => pl(n, ['балл', 'балла', 'баллов']);
+  // Баллы из старых записей, где приёмы ещё не отмечались
+  const extraPoints = (f, side) => Math.max(0, f[side] - techPoints(f[side + 'T']));
+
+  // Один и тот же соперник, даже если имя и фамилия записаны в другом порядке
+  const rivalKey = (name) => String(name || '').toLowerCase().replace(/ё/g, 'е').split(/[^a-zа-я0-9]+/).filter(Boolean).sort().join(' ');
+
+  function normFight(f) {
+    const myT = techCounts(f.myT);
+    const oppT = techCounts(f.oppT);
+    return {
+      id: String(f.id || uid()),
+      rival: String(f.rival || '').slice(0, 80),
+      task: String(f.task || ''),
+      my: Math.min(99, Math.max(num99(f.my), techPoints(myT))),
+      opp: Math.min(99, Math.max(num99(f.opp), techPoints(oppT))),
+      myT: myT,
+      oppT: oppT,
+      result: ['win', 'loss', 'draw'].includes(f.result) ? f.result : null,
+      good: String(f.good || ''),
+      bad: String(f.bad || '')
+    };
+  }
+
   function normalize(d) {
     const out = emptyDb();
     if (!d || typeof d !== 'object') return out;
@@ -109,15 +150,7 @@
       place: String(c.place || ''),
       rank: [0, 1, 2, 3].includes(c.rank) ? c.rank : null,
       done: !!c.done,
-      fights: (Array.isArray(c.fights) ? c.fights : []).map((f) => ({
-        id: String(f.id || uid()),
-        task: String(f.task || ''),
-        my: Math.max(0, Math.min(99, parseInt(f.my, 10) || 0)),
-        opp: Math.max(0, Math.min(99, parseInt(f.opp, 10) || 0)),
-        result: ['win', 'loss', 'draw'].includes(f.result) ? f.result : null,
-        good: String(f.good || ''),
-        bad: String(f.bad || '')
-      })),
+      fights: (Array.isArray(c.fights) ? c.fights : []).map(normFight),
       drills: (Array.isArray(c.drills) ? c.drills : []).map((x) => ({ id: String(x.id || uid()), text: String(x.text || ''), done: !!x.done }))
     }));
     return out;
@@ -143,12 +176,25 @@
   const beltIndex = () => Math.max(0, BELTS.findIndex((b) => b.id === db.profile.belt));
 
   function calc(comps) {
-    const r = { comps: comps.length, fights: 0, wins: 0, losses: 0, draws: 0, my: 0, opp: 0, medals: { 1: 0, 2: 0, 3: 0 }, drills: 0, drillsDone: 0 };
+    const r = {
+      comps: comps.length, fights: 0, wins: 0, losses: 0, draws: 0, my: 0, opp: 0, medals: { 1: 0, 2: 0, 3: 0 }, drills: 0, drillsDone: 0,
+      myT: techCounts(), oppT: techCounts(), myX: 0, oppX: 0, rivals: []
+    };
+    const rivals = {};
     comps.forEach((c) => {
       c.fights.forEach((f) => {
         r.fights++;
         if (f.result === 'win') r.wins++; else if (f.result === 'loss') r.losses++; else if (f.result === 'draw') r.draws++;
         r.my += f.my; r.opp += f.opp;
+        TECHS.forEach((t) => { r.myT[t.id] += f.myT[t.id]; r.oppT[t.id] += f.oppT[t.id]; });
+        r.myX += extraPoints(f, 'my'); r.oppX += extraPoints(f, 'opp');
+        const key = rivalKey(f.rival);
+        if (key) {
+          if (!rivals[key]) { rivals[key] = { name: f.rival.trim(), fights: 0, wins: 0, losses: 0, draws: 0, my: 0, opp: 0 }; r.rivals.push(rivals[key]); }
+          const v = rivals[key];
+          v.fights++; v.my += f.my; v.opp += f.opp;
+          if (f.result === 'win') v.wins++; else if (f.result === 'loss') v.losses++; else if (f.result === 'draw') v.draws++;
+        }
       });
       if (r.medals[c.rank] !== undefined) r.medals[c.rank]++;
       c.drills.forEach((d) => { r.drills++; if (d.done) r.drillsDone++; });
@@ -392,6 +438,26 @@
       const points = '<div class="card"><div class="card-h">Баллы за сезон</div><div class="duel">' +
         '<div class="plus"><b>' + s.my + '</b><span>набрано</span></div><div class="minus"><b>' + s.opp + '</b><span>пропущено</span></div></div></div>';
 
+      // Баллы по приёмам: чем набраны и чем пропущены
+      const techCard = (title, counts, extra, color, emptyText) => {
+        const rows = TECHS.map((t) => ({ name: t.name, n: counts[t.id], p: counts[t.id] * t.pts }));
+        if (extra > 0) rows.push({ name: 'Старые записи без приёмов', n: null, p: extra });
+        const max = Math.max.apply(null, rows.map((x) => x.p));
+        if (!max) return '<div class="card"><div class="card-h">' + title + '</div><p class="note" style="margin:0">' + emptyText + '</p></div>';
+        return '<div class="card"><div class="card-h">' + title + '</div>' + rows.map((x) =>
+          '<div class="bar-row"><div class="bar-top"><span class="bar-name">' + x.name + '</span><span class="bar-val">' +
+          (x.n == null ? '' : x.n + ' ' + pl(x.n, ['раз', 'раза', 'раз']) + ' · ') + x.p + ' ' + ptsWord(x.p) + '</span></div>' +
+          '<div class="bar-track"><i style="width:' + Math.round((x.p / max) * 100) + '%;background:' + color + '"></i></div></div>').join('') + '</div>';
+      };
+      const myTechs = techCard('Мои приёмы: чем набраны баллы', s.myT, s.myX, '#DD1212', 'Пока нет набранных баллов.');
+      const oppTechs = techCard('Что я пропускаю', s.oppT, s.oppX, '#2F2A2A', 'Пропущенных баллов нет. Отличная защита!');
+
+      const rivalRows = s.rivals.slice().sort((a, b) => b.fights - a.fights || a.name.localeCompare(b.name, 'ru'));
+      const rivals = rivalRows.length ? '<div class="card"><div class="card-h">Соперники</div>' + rivalRows.map((v) =>
+        '<div class="bar-row"><div class="bar-top"><span class="bar-name">' + esc(v.name) + '</span><span class="bar-val">побед ' + v.wins + ' из ' + v.fights + '</span></div>' +
+        '<div class="bar-date">' + v.fights + ' ' + pl(v.fights, ['бой', 'боя', 'боёв']) + ' · баллы ' + v.my + ':' + v.opp +
+        (v.draws ? ' · ' + v.draws + ' ' + pl(v.draws, ['ничья', 'ничьи', 'ничьих']) : '') + '</div></div>').join('') + '</div>' : '';
+
       const bars = '<div class="card"><div class="card-h">Победы на каждом соревновании</div>' + comps.map((c) => {
         const x = calc([c]);
         const w = x.fights ? Math.round((x.wins / x.fights) * 100) : 0;
@@ -404,7 +470,7 @@
       const drills = s.drills ? '<div class="card"><div class="card-h">Отработка</div><div class="bar-top"><span class="bar-name">Выполнено заданий</span>' +
         '<span class="bar-val">' + s.drillsDone + ' из ' + s.drills + '</span></div><div class="bar-track"><i style="width:' + Math.round((s.drillsDone / s.drills) * 100) + '%;background:#1C9A52"></i></div></div>' : '';
 
-      body = '<div class="stack">' + banner + ring + medals + points + bars + drills + '</div>';
+      body = '<div class="stack">' + banner + ring + medals + points + myTechs + oppTechs + rivals + bars + drills + '</div>';
     }
     return '<div class="topbar"><h1>Итоги</h1><p>Спортивный год: сентябрь — июнь</p></div><div class="screen" data-screen="stats">' + chips +
       '<div class="pad" style="padding-top:12px">' + body + '</div></div>';
@@ -438,6 +504,7 @@
         '<div class="sum"><div><b>' + s.fights + '</b><span>' + pl(s.fights, ['бой', 'боя', 'боёв']) + '</span></div><div><b>' + s.my + '</b><span>набрано</span></div><div><b>' + s.opp + '</b><span>пропущено</span></div></div>' +
         '<div class="stack">' + c.fights.map((f, i) =>
           '<button class="fight" data-act="edit-fight" data-fid="' + f.id + '"><span class="fight-main"><span class="fight-n">Бой ' + (i + 1) + '</span>' +
+          (f.rival.trim() ? '<span class="fight-rival">' + esc(f.rival.trim()) + '</span>' : '') +
           '<span class="fight-r"><span class="fight-score">' + f.my + ' : ' + f.opp + '</span>' + resTag(f.result) + '</span></span>' + I.pencil + '</button>').join('') +
         '<button class="btn btn-dashed" data-act="add-fight">' + I.plus + '<span>Добавить бой</span></button></div>';
     } else if (o.step === 2) {
@@ -466,18 +533,36 @@
 
   /* ---------- Один бой ---------- */
 
+  // Сумма баллов в открытой записи боя: приёмы плюс баллы из старых записей
+  const draftTotal = (d, side) => techPoints(d[side + 'T']) + d[side + 'X'];
+
+  function calcCard(d, side, title) {
+    const counts = d[side + 'T'];
+    const rows = TECHS.map((t) =>
+      '<div class="calc-row"><div class="calc-name"><b>' + t.name + '</b><small>' + t.pts + ' ' + ptsWord(t.pts) + '</small></div>' +
+      '<div class="calc-ctl"><button data-act="dec" data-side="' + side + '" data-tech="' + t.id + '" aria-label="Убрать: ' + t.name + '">' + I.minus + '</button>' +
+      '<span class="calc-cnt' + (counts[t.id] ? '' : ' zero') + '" data-cnt="' + side + '.' + t.id + '">' + counts[t.id] + '</span>' +
+      '<button class="plus" data-act="inc" data-side="' + side + '" data-tech="' + t.id + '" aria-label="Добавить: ' + t.name + '">' + I.plus + '</button></div></div>').join('');
+    const old = d[side + 'X'] > 0
+      ? '<div class="calc-row"><div class="calc-name"><b>Без приёма</b><small>записано раньше</small></div>' +
+        '<div class="calc-ctl"><button data-act="dec" data-side="' + side + '" data-tech="x" aria-label="Убрать балл без приёма">' + I.minus + '</button>' +
+        '<span class="calc-cnt" data-cnt="' + side + '.x">' + d[side + 'X'] + '</span><span class="calc-gap"></span></div></div>'
+      : '';
+    return '<div class="calc ' + (side === 'my' ? 'me' : 'opp') + '"><div class="calc-head"><span>' + title + '</span>' +
+      '<b data-num="' + side + '" aria-live="polite">' + draftTotal(d, side) + '</b></div>' + rows + old + '</div>';
+  }
+
   function viewFight(o) {
     const f = o.draft;
-    const score = (key, label, me) => '<div class="sb' + (me ? ' me' : '') + '"><div class="sb-l">' + label + '</div><div class="sb-n" data-num="' + key + '" aria-live="polite">' + f[key] + '</div>' +
-      '<div class="sb-btns"><button data-act="dec" data-field="' + key + '" aria-label="Убрать балл">' + I.minus + '</button>' +
-      '<button class="plus" data-act="inc" data-field="' + key + '" aria-label="Добавить балл">' + I.plus + '</button></div></div>';
     const ch = (v, label, wide) => '<button class="' + (f.result === v ? 'on' : '') + (wide ? ' wide' : '') + '" data-act="result" data-val="' + v + '" aria-pressed="' + (f.result === v) + '">' + label + '</button>';
 
     return '<div class="overlay' + (o.fresh ? ' fresh' : '') + '"><div class="sheet" role="dialog" aria-label="Бой">' +
       '<div class="sheet-top"><button class="icon-btn" data-act="close" aria-label="Назад">' + I.back + '</button><h2>Бой ' + o.num + '</h2><span class="spacer"></span></div>' +
       '<div class="sheet-body">' +
+      '<label class="field"><span class="lbl">С кем был бой?</span><input class="inp" type="text" data-bind="fight.rival" value="' + esc(f.rival) + '" placeholder="Имя и фамилия соперника" maxlength="80" autocomplete="off" autocapitalize="words" enterkeyhint="done"></label>' +
       '<label class="field"><span class="lbl">Задание тренера на этот бой</span><textarea class="inp" data-bind="fight.task" rows="2" placeholder="Что тренер просил сделать?" maxlength="400">' + esc(f.task) + '</textarea></label>' +
-      '<span class="lbl">Счёт</span><div class="scoreboard">' + score('my', 'Мои баллы', true) + score('opp', 'Баллы соперника', false) + '</div>' +
+      '<span class="lbl">Калькулятор баллов <small>— нажимай «+» за каждый оценённый приём</small></span>' +
+      calcCard(f, 'my', 'Мои баллы') + calcCard(f, 'opp', 'Баллы соперника') +
       '<span class="lbl">Чем закончился бой?</span><div class="choice" id="fight-result">' + ch('win', 'Победа') + ch('loss', 'Поражение') + ch('draw', 'Ничья', true) + '</div>' +
       '<label class="field good"><span class="lbl">👍 Что получилось</span><textarea class="inp" data-bind="fight.good" rows="2" placeholder="Что удалось сделать хорошо?" maxlength="600">' + esc(f.good) + '</textarea></label>' +
       '<label class="field bad"><span class="lbl">👎 Что не получилось</span><textarea class="inp" data-bind="fight.bad" rows="2" placeholder="Над чем нужно поработать?" maxlength="600">' + esc(f.bad) + '</textarea></label>' +
@@ -492,6 +577,13 @@
     if (!c) return '';
     const s = calc([c]);
     const block = (cls, k, v) => '<div class="f-block ' + cls + '"><div class="f-k">' + k + '</div><div class="f-v' + (v.trim() ? '' : ' none') + '">' + (v.trim() ? esc(v) : 'Не записано') + '</div></div>';
+    // Какими приёмами набраны баллы в бою
+    const techs = (f, side, label) => {
+      const chips = TECHS.filter((t) => f[side + 'T'][t.id] > 0).map((t) => '<span class="tech' + (side === 'opp' ? ' opp' : '') + '">' + t.name + ' × ' + f[side + 'T'][t.id] + '</span>');
+      const x = extraPoints(f, side);
+      if (x > 0) chips.push('<span class="tech' + (side === 'opp' ? ' opp' : '') + '">Без приёма: ' + x + ' ' + ptsWord(x) + '</span>');
+      return chips.length ? '<div class="f-block"><div class="f-k">' + label + ' · ' + f[side] + ' ' + ptsWord(f[side]) + '</div><div class="techs">' + chips.join('') + '</div></div>' : '';
+    };
     const rankText = c.rank >= 1 ? c.rank + ' место' : c.rank === 0 ? 'Без медали' : 'Место ещё не отмечено';
 
     return '<div class="overlay' + (o.fresh ? ' fresh' : '') + '"><div class="sheet" role="dialog" aria-label="Соревнование">' +
@@ -506,6 +598,8 @@
       '<div class="section-h">Бои</div>' +
       (c.fights.length ? '<div class="stack">' + c.fights.map((f, i) =>
         '<div class="f-card"><div class="f-head"><span class="fight-n">Бой ' + (i + 1) + '</span><span class="fight-r" style="margin:0"><span class="fight-score">' + f.my + ' : ' + f.opp + '</span>' + resTag(f.result) + '</span></div>' +
+        (f.rival.trim() ? '<div class="f-rival">Соперник: <b>' + esc(f.rival.trim()) + '</b></div>' : '') +
+        techs(f, 'my', 'Мои баллы') + techs(f, 'opp', 'Пропущено') +
         block('', 'Задание тренера', f.task) + block('good', '👍 Что получилось', f.good) + block('bad', '👎 Что не получилось', f.bad) + '</div>').join('') + '</div>'
         : '<div class="card"><p class="note" style="margin:0">Боёв пока нет.</p></div>') +
       '<div class="section-h">Отработка</div>' +
@@ -684,16 +778,28 @@
     const c = getComp(o.compId);
     if (!c) return;
     const idx = c.fights.findIndex((f) => f.id === fightId);
-    const src = idx >= 0 ? c.fights[idx] : { task: '', my: 0, opp: 0, result: null, good: '', bad: '' };
+    const src = idx >= 0 ? c.fights[idx] : normFight({});
     push({
       type: 'fight', compId: c.id, fightId: idx >= 0 ? fightId : null, num: idx >= 0 ? idx + 1 : c.fights.length + 1,
       touched: idx >= 0 && !!src.result,
-      draft: { task: src.task, my: src.my, opp: src.opp, result: src.result, good: src.good, bad: src.bad }
+      draft: {
+        rival: src.rival, task: src.task,
+        myT: techCounts(src.myT), oppT: techCounts(src.oppT),
+        myX: extraPoints(src, 'my'), oppX: extraPoints(src, 'opp'),
+        result: src.result, good: src.good, bad: src.bad
+      }
     });
   }
 
   function syncFightUi(o) {
-    $$('[data-num]').forEach((el) => { el.textContent = o.draft[el.dataset.num]; });
+    const d = o.draft;
+    $$('[data-num]').forEach((el) => { el.textContent = draftTotal(d, el.dataset.num); });
+    $$('[data-cnt]').forEach((el) => {
+      const p = el.dataset.cnt.split('.');
+      const v = p[1] === 'x' ? d[p[0] + 'X'] : d[p[0] + 'T'][p[1]];
+      el.textContent = v;
+      el.classList.toggle('zero', !v);
+    });
     $$('#fight-result button').forEach((b) => {
       const on = b.dataset.val === o.draft.result;
       b.classList.toggle('on', on);
@@ -711,7 +817,12 @@
       toast('Отметь, чем закончился бой');
       return;
     }
-    const data = { task: d.task.trim(), my: d.my, opp: d.opp, result: d.result, good: d.good.trim(), bad: d.bad.trim() };
+    const data = {
+      rival: d.rival.trim().replace(/\s+/g, ' '), task: d.task.trim(),
+      my: draftTotal(d, 'my'), opp: draftTotal(d, 'opp'),
+      myT: techCounts(d.myT), oppT: techCounts(d.oppT),
+      result: d.result, good: d.good.trim(), bad: d.bad.trim()
+    };
     const f = o.fightId && c.fights.find((x) => x.id === o.fightId);
     if (f) Object.assign(f, data); else c.fights.push(Object.assign({ id: uid() }, data));
     saveNow();
@@ -815,9 +926,20 @@
       case 'inc':
       case 'dec':
         if (o && o.type === 'fight') {
-          const k = el.dataset.field;
-          o.draft[k] = Math.max(0, Math.min(99, o.draft[k] + (act === 'inc' ? 1 : -1)));
-          if (!o.touched) o.draft.result = o.draft.my > o.draft.opp ? 'win' : o.draft.my < o.draft.opp ? 'loss' : null;
+          const d = o.draft;
+          const side = el.dataset.side === 'opp' ? 'opp' : 'my';
+          const tech = techById(el.dataset.tech);
+          if (el.dataset.tech === 'x') {
+            d[side + 'X'] = Math.max(0, d[side + 'X'] - 1);
+          } else if (tech) {
+            const counts = d[side + 'T'];
+            if (act === 'dec') counts[tech.id] = Math.max(0, counts[tech.id] - 1);
+            else if (draftTotal(d, side) + tech.pts <= 99) counts[tech.id]++;
+          }
+          if (!o.touched) {
+            const a = draftTotal(d, 'my'), b = draftTotal(d, 'opp');
+            d.result = a > b ? 'win' : a < b ? 'loss' : null;
+          }
           syncFightUi(o);
         }
         break;

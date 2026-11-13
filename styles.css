@@ -408,7 +408,7 @@ svg { display: block; }
 .duel .minus { background: var(--grey-bg); color: var(--ink-2); }
 
 .bar-row { padding: 10px 0; border-top: 1px solid var(--line); }
-.bar-row:first-of-type { border-top: 0; padding-top: 0; }
+.bar-row:first-of-type, .card-h + .bar-row { border-top: 0; padding-top: 0; }
 .bar-row:last-child { padding-bottom: 0; }
 .bar-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .bar-name { font-weight: 600; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -546,17 +546,28 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .res.draw { background: #FFF1CC; color: #7A5600; }
 .res.none { background: #FFEBD9; color: #B4530C; }
 
-.scoreboard { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
-.sb { display: flex; flex-direction: column; background: #fff; border-radius: 18px; padding: 12px 8px 14px; text-align: center; border: 2px solid var(--line); }
-.sb-l { flex: 1 0 auto; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
-.sb.me .sb-l { color: var(--red); }
-.sb-n { font-family: var(--font-h); font-weight: 800; font-size: 46px; line-height: 1.15; margin: 4px 0 8px; }
-.sb-btns { display: flex; gap: 8px; justify-content: center; }
-.sb-btns button { width: 58px; height: 54px; border-radius: 16px; display: grid; place-items: center; background: var(--grey-bg); color: var(--ink-2); }
-.sb-btns button .ico { width: 28px; height: 28px; stroke-width: 3.4; }
-.sb-btns button.plus { background: var(--ink-2); color: #fff; }
-.sb.me .sb-btns button.plus { background: var(--red); }
-.sb-btns button:active { transform: scale(.93); }
+.fight-rival { display: block; margin-top: 3px; font-weight: 600; font-size: 15px; color: var(--ink-2); overflow-wrap: anywhere; }
+
+/* Калькулятор баллов: приёмы и их оценки */
+.calc { background: #fff; border: 2px solid var(--line); border-radius: 20px; overflow: hidden; margin-bottom: 14px; }
+.calc + .lbl { margin-top: 20px; }
+.calc-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; background: var(--ink-2); color: #fff; font-weight: 700; font-size: 16px; }
+.calc.me .calc-head { background: var(--red); }
+.calc-head b { font-family: var(--font-h); font-weight: 800; font-size: 32px; line-height: 1; }
+.calc-row { display: flex; align-items: center; gap: 10px; padding: 9px 10px 9px 16px; border-top: 1px solid var(--line); }
+.calc-head + .calc-row { border-top: 0; }
+.calc-name { flex: 1; min-width: 0; }
+.calc-name b { display: block; font-weight: 700; font-size: 16px; line-height: 1.2; }
+.calc-name small { display: block; margin-top: 2px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.calc-ctl { flex: none; display: flex; align-items: center; gap: 4px; }
+.calc-ctl button { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: var(--grey-bg); color: var(--ink-2); }
+.calc-ctl button .ico { width: 24px; height: 24px; stroke-width: 3.2; }
+.calc-ctl button.plus { width: 58px; background: var(--ink-2); color: #fff; }
+.calc.me .calc-ctl button.plus { background: var(--red); }
+.calc-ctl button:active { transform: scale(.93); }
+.calc-cnt { min-width: 38px; text-align: center; font-family: var(--font-h); font-weight: 800; font-size: 22px; }
+.calc-cnt.zero { color: #C3B9B9; }
+.calc-gap { width: 58px; flex: none; }
 
 .choice { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
 .choice button {
@@ -627,6 +638,11 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .f-k { font-size: 12px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
 .f-block.good .f-k { color: #0F6B36; }
 .f-block.bad .f-k { color: var(--red-deep); }
+.f-rival { margin-top: 2px; font-weight: 500; color: var(--ink-2); overflow-wrap: anywhere; }
+.f-rival b { font-weight: 700; color: var(--ink); }
+.techs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.tech { font-size: 13px; font-weight: 700; border-radius: 10px; padding: 5px 10px; background: #FDECEC; color: var(--red-deep); }
+.tech.opp { background: var(--grey-bg); color: var(--ink-2); }
 .f-v { margin-top: 3px; font-weight: 500; white-space: pre-wrap; overflow-wrap: anywhere; }
 .f-v.none { color: #A99E9E; }
 
@@ -754,9 +770,11 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   .hero h1 { font-size: 22px; }
   .goal-title { font-size: 19px; }
   .btn { font-size: 13px; }
-  .sb-n { font-size: 40px; }
-  .sb-l { font-size: 12px; letter-spacing: -.01em; }
-  .sb-btns button { width: 50px; height: 50px; }
+  .calc-row { padding-left: 12px; gap: 6px; }
+  .calc-name b { font-size: 14.5px; }
+  .calc-ctl button { width: 44px; height: 46px; }
+  .calc-ctl button.plus, .calc-gap { width: 50px; }
+  .calc-cnt { min-width: 30px; font-size: 20px; }
   .rank .medal.big { width: 64px; height: 64px; font-size: 27px; }
   .rank { font-size: 14px; }
   .belt-grid { grid-template-columns: repeat(3, 1fr); }

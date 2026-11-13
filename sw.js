@@ -1,7 +1,7 @@
 /* Дневник спортсмена — работа без интернета.
    Если меняете файлы приложения, увеличьте номер версии ниже (v1 → v2),
    тогда телефоны подтянут обновление. */
-const VERSION = 'soyuz-diary-v1';
+const VERSION = 'soyuz-diary-v2';
 const FONT_CACHE = 'soyuz-diary-fonts';
 const FONT_CSS = 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Unbounded:wght@500;700;800&display=swap';
 
